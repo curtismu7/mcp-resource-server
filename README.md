@@ -21,8 +21,9 @@ you supply instead (see below).
 cp .env.example .env
 ```
 
-Edit `.env`: set `MCP_RESOURCE_SERVER_RESOURCE_URI`, `PINGONE_ENVIRONMENT_ID`,
-`PINGONE_REGION`, and `PINGONE_ISSUER` for your own PingOne environment.
+Edit `.env`: set `MCP_RESOURCE_SERVER_RESOURCE_URI`, `PINGONE_ENVIRONMENT_ID`
+and `PINGONE_REGION` for your own PingOne environment. Leave `PINGONE_ISSUER`
+commented out until you have real tokens (see "Auth modes").
 
 ```bash
 docker compose up --build
@@ -45,13 +46,21 @@ this is the RFC 9728 metadata an MCP client uses for OAuth discovery.
 
 ## Auth modes
 
-- **`STRICT_AUTH=false`** (default) — a token whose signature can't be
-  verified is accepted anyway, with a console warning. Lets you exercise
-  every tool before PingOne is fully wired up. Do not leave this on for
-  anything reachable by more than you.
-- **`STRICT_AUTH=true`** — tokens are rejected outright unless their
-  signature verifies against your PingOne environment's JWKS
-  (`PINGONE_ISSUER`, `PINGONE_JWKS_URI`, or `PINGONE_BASE_URL` — set one).
+Whether a token's signature is verified is decided by whether a JWKS source
+is configured — not by `STRICT_AUTH`:
+
+- **JWKS source set** (`PINGONE_ISSUER`, `PINGONE_JWKS_URI`, or
+  `PINGONE_BASE_URL`) — every token is verified against your PingOne
+  environment's keys and rejected on failure. `STRICT_AUTH` has no effect.
+  Run this way once real tokens are flowing.
+- **No JWKS source** — `STRICT_AUTH=false` (the shipped default) accepts a
+  well-formed token with a console warning, so you can exercise every tool
+  with a hand-made token before PingOne is wired up; `STRICT_AUTH=true`
+  rejects every token instead. Do not leave the default reachable by more
+  than you.
+
+`.env.example` ships with all three JWKS variables commented out for that
+reason — uncomment one when you have real tokens.
 
 ## Getting a bearer token
 
@@ -203,7 +212,13 @@ exporting `dispatch<Vertical>Tool`), plus:
   `<VERTICAL>_TOOLS` into `ALL_TOOLS`, add a
   `const <VERTICAL>_TOOL_NAMES = new Set(<VERTICAL>_TOOLS.map((t) => t.name))`,
   and one line in `dispatch()`:
-  `if (<VERTICAL>_TOOL_NAMES.has(toolName)) return dispatch<Vertical>Tool(toolName, args);`
+  `if (<VERTICAL>_TOOL_NAMES.has(toolName)) return dispatch<Vertical>Tool(toolName, args, subject);`
+  (`subject` is the token's `sub` — accept it in your handler when reads
+  must be scoped to the caller, as banking and airlines do.)
+- **Resources** (optional): `tools/list` is automatic, but MCP *resources*
+  (`resources/list`, `resources/read`) come from the hand-maintained
+  `RESOURCE_CATALOG` in `src/index.ts` — add an entry there if the vertical
+  should also expose its list tool as a resource.
 
 ### Things that bite
 
