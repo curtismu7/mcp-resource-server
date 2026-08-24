@@ -1,0 +1,23 @@
+{
+  "patients": [
+    { "id": "PAT-001", "full_name": "Morgan Ellis", "dob": "1984-05-19", "mrn": "MRN-448210", "primary_physician": "Dr. Priya Raman" }
+  ],
+  "records": [
+    { "id": "REC-101", "patient_id": "PAT-001", "date": "2026-06-04", "type": "visit", "provider": "Dr. Priya Raman", "summary": "Annual physical. BP 118/76, BMI 23.4. No concerns; continue current plan." },
+    { "id": "REC-102", "patient_id": "PAT-001", "date": "2026-06-04", "type": "lab", "provider": "CareConnect Lab", "summary": "CBC and lipid panel within normal limits. LDL 96 mg/dL." },
+    { "id": "REC-103", "patient_id": "PAT-001", "date": "2026-07-11", "type": "imaging", "provider": "Riverside Imaging", "summary": "Right knee X-ray after fall: no fracture, mild effusion. RICE and follow-up in 2 weeks." },
+    { "id": "REC-104", "patient_id": "PAT-001", "date": "2026-07-25", "type": "visit", "provider": "Dr. Alan Okafor (Ortho)", "summary": "Knee follow-up: effusion resolved, full range of motion. Cleared for activity." },
+    { "id": "REC-105", "patient_id": "PAT-001", "date": "2026-08-15", "type": "immunization", "provider": "CareConnect Pharmacy", "summary": "Seasonal influenza vaccine administered, left deltoid. No reaction." }
+  ],
+  "appointments": [
+    { "id": "APT-201", "patient_id": "PAT-001", "datetime": "2026-06-04T09:00", "provider": "Dr. Priya Raman", "location": "Main Clinic, Suite 210", "reason": "Annual physical", "status": "completed" },
+    { "id": "APT-202", "patient_id": "PAT-001", "datetime": "2026-07-25T14:30", "provider": "Dr. Alan Okafor", "location": "Orthopedics, Bldg C", "reason": "Knee follow-up", "status": "completed" },
+    { "id": "APT-203", "patient_id": "PAT-001", "datetime": "2026-09-09T10:15", "provider": "Dr. Priya Raman", "location": "Main Clinic, Suite 210", "reason": "Lab review", "status": "scheduled" },
+    { "id": "APT-204", "patient_id": "PAT-001", "datetime": "2026-10-02T08:00", "provider": "Bright Smile Dental", "location": "Dental Annex", "reason": "Cleaning", "status": "scheduled" }
+  ],
+  "prescriptions": [
+    { "id": "RX-301", "patient_id": "PAT-001", "medication": "Atorvastatin", "dosage": "10 mg nightly", "prescriber": "Dr. Priya Raman", "refills_left": 2, "status": "active" },
+    { "id": "RX-302", "patient_id": "PAT-001", "medication": "Ibuprofen", "dosage": "400 mg every 8 hours as needed", "prescriber": "Dr. Alan Okafor", "refills_left": 0, "status": "expired" },
+    { "id": "RX-303", "patient_id": "PAT-001", "medication": "Cetirizine", "dosage": "10 mg daily", "prescriber": "Dr. Priya Raman", "refills_left": 5, "status": "active" }
+  ]
+}
