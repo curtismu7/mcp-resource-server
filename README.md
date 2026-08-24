@@ -3,9 +3,9 @@
 An MCP server exposing read-mostly tools across ten mock verticals (banking,
 healthcare, government, manufacturing, retail, sporting-goods, university,
 workforce, Abercrombie & Fitch, airlines) plus a set of investment tools.
-Every vertical except investment reads its own bundled SQLite database — no
-other service is required to run it. Investment tools proxy to a banking API
-you supply (optional — see below).
+Every vertical reads its own bundled SQLite database — no other service is
+required to run it. Investment tools can optionally proxy to a banking API
+you supply instead (see below).
 
 ## Prerequisites
 
@@ -144,11 +144,13 @@ client registered for that specific MCP client app, using the redirect URI
 that client's own docs specify — a PingOne-side setup step outside this
 server. Restart the client after editing its config.
 
-## Investment tools (optional)
+## Investment tools
 
 `get_investment_accounts`, `get_investment_balance`, `get_portfolio_summary`,
-and `get_investment_transactions` forward the caller's bearer token to
-`BANKING_API_BASE_URL` and return whatever that API returns. Every other
-tool works with no such backend. Leave `BANKING_API_BASE_URL` unset to skip
-investment tools entirely — calls to them will fail with a connection error,
-everything else is unaffected.
+and `get_investment_transactions` work out of the box from a bundled SQLite
+database (`data/invest.db`, seeded from `seed/invest.seed.json` on first
+boot), exactly like every other vertical.
+
+Set `BANKING_API_BASE_URL` only if you run a banking API of your own and want
+these four tools to forward the caller's bearer token to it and return
+whatever it returns. With it set, the bundled invest database is not used.
