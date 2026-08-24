@@ -1,0 +1,144 @@
+{
+  "name": "banking",
+  "resourceName": "Banking MCP Server",
+  "tools": [
+    {
+      "name": "list_accounts",
+      "description": "List all of the customer's accounts with type, masked number, balance and status.",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["show my accounts", "what accounts do I have", "list accounts"],
+      "sql": "SELECT id, nickname, type, number_masked, balance, available, currency, status FROM accounts ORDER BY id",
+      "result": "many"
+    },
+    {
+      "name": "get_account",
+      "description": "Full details of one account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "account_id": { "type": "string", "description": "Account id, e.g. ACC-001" } },
+        "required": ["account_id"]
+      },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["show account details", "tell me about my checking account"],
+      "sql": "SELECT id, nickname, type, number_masked, balance, available, currency, opened, status FROM accounts WHERE id = :account_id",
+      "result": "one"
+    },
+    {
+      "name": "get_account_balance",
+      "description": "Current and available balance for one account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "account_id": { "type": "string", "description": "Account id, e.g. ACC-001" } },
+        "required": ["account_id"]
+      },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["what's my balance", "how much is in checking", "available balance"],
+      "sql": "SELECT id AS account_id, nickname, balance, available, currency FROM accounts WHERE id = :account_id",
+      "result": "one"
+    },
+    {
+      "name": "list_transactions",
+      "description": "Most recent transactions for one account, newest first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string", "description": "Account id, e.g. ACC-001" },
+          "limit": { "type": "integer", "description": "Max rows (1-100, default 20)" }
+        },
+        "required": ["account_id"]
+      },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["recent transactions", "show my transactions", "what did I spend"],
+      "sql": "SELECT id, date, merchant, category, amount, status, running_balance FROM transactions WHERE account_id = :account_id ORDER BY date DESC, id DESC LIMIT COALESCE(:limit, 20)",
+      "result": "many"
+    },
+    {
+      "name": "search_transactions",
+      "description": "Find transactions across all accounts whose merchant or category contains the query text.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "Text to match against merchant or category, e.g. groceries" },
+          "limit": { "type": "integer", "description": "Max rows (1-100, default 20)" }
+        },
+        "required": ["query"]
+      },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["find transactions from", "how much did I spend on groceries", "search transactions"],
+      "sql": "SELECT id, account_id, date, merchant, category, amount, status FROM transactions WHERE merchant LIKE '%' || :query || '%' OR category LIKE '%' || :query || '%' ORDER BY date DESC, id DESC LIMIT COALESCE(:limit, 20)",
+      "result": "many"
+    },
+    {
+      "name": "list_cards",
+      "description": "Debit and credit cards on the customer's accounts.",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["show my cards", "is my card active", "card limits"],
+      "sql": "SELECT c.id, c.account_id, a.nickname AS account, c.kind, c.network, c.last4, c.status, c.expires, c.daily_limit FROM cards c JOIN accounts a ON a.id = c.account_id ORDER BY c.id",
+      "result": "many"
+    },
+    {
+      "name": "get_statement",
+      "description": "Monthly statement summary for one account and period.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string", "description": "Account id, e.g. ACC-001" },
+          "period": { "type": "string", "description": "Statement month as YYYY-MM, e.g. 2026-07" }
+        },
+        "required": ["account_id", "period"]
+      },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["show my July statement", "statement for checking", "monthly summary"],
+      "sql": "SELECT id, account_id, period, opening_balance, closing_balance, total_in, total_out, document FROM statements WHERE account_id = :account_id AND period = :period",
+      "result": "one"
+    },
+    {
+      "name": "find_branches",
+      "description": "Branches and ATMs, optionally filtered by city or zip code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": { "type": "string", "description": "City name, e.g. Springfield" },
+          "zip": { "type": "string", "description": "5-digit zip code" }
+        },
+        "required": []
+      },
+      "requiredScopes": ["banking:read"],
+      "intentHints": ["nearest branch", "find an ATM", "branch hours"],
+      "sql": "SELECT id, name, address, city, zip, hours, services, has_atm FROM branches WHERE (:city IS NULL OR city = :city) AND (:zip IS NULL OR zip = :zip) ORDER BY id",
+      "result": "many"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "banking://accounts",
+      "name": "Bank Accounts",
+      "description": "All accounts for the customer",
+      "mimeType": "application/json",
+      "requiredScope": "banking:read",
+      "uriTemplate": "banking://accounts/{account_id}",
+      "templateName": "Bank Account",
+      "listTool": "list_accounts"
+    },
+    {
+      "uri": "banking://cards",
+      "name": "Cards",
+      "description": "All debit and credit cards for the customer",
+      "mimeType": "application/json",
+      "requiredScope": "banking:read",
+      "uriTemplate": "banking://cards/{card_id}",
+      "templateName": "Card",
+      "listTool": "list_cards"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "explain_account",
+      "description": "Explain one account's recent activity in plain language for the customer.",
+      "arguments": [{ "name": "account_id", "description": "Account id, e.g. ACC-001", "required": true }],
+      "template": "Call get_account_balance and list_transactions for account {{account_id}}, then explain the current balance and the most notable recent transactions in plain, customer-friendly language. Do not show raw field names."
+    }
+  ]
+}
