@@ -222,3 +222,7 @@ Unchanged. `scopes_supported` is derived from the loaded vertical's tools.
 Writes; several verticals live at once; any OAuth/PingOne change; the
 AI-DEMO2 copy of this server; porting the other nine verticals (they can be
 written as folders later using the healthcare one as the template).
+
+## Amendments
+
+- 2026-08-24 (plan): `prompts[]` is part of `vertical.json` — `{ name, description, arguments[], template }`, where `template` is the user message and `{{arg}}` placeholders are filled from `prompts/get` arguments. `completion/complete` always returns an empty list. This replaces the airlines-specific prompt and completion hook that were in `src/index.ts`.
