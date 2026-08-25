@@ -1,6 +1,8 @@
 'use strict';
 import { loadVertical, VerticalConfigError } from '../../src/vertical/load';
-import { writeVertical, config, GOOD_CONFIG } from './fixtures';
+import { cleanupVerticals, writeVertical, config, GOOD_CONFIG } from './fixtures';
+
+afterAll(cleanupVerticals);
 
 describe('loadVertical', () => {
   it('loads a good folder', () => {
@@ -34,6 +36,7 @@ describe('loadVertical', () => {
     ['sql that is not a SELECT', () => writeVertical({ config: config((c) => { c.tools[0].sql = 'DELETE FROM things'; }) }), /list_things.*SELECT/],
     ['sql with a colon inside a string literal', () => writeVertical({ config: config((c) => { c.tools[0].sql = "SELECT id FROM things WHERE label = 'a:b'"; }) }), /list_things/],
     ['prompt placeholder with no argument', () => writeVertical({ config: config((c) => { c.prompts[0].template = 'Use {{missing}}'; }) }), /describe_thing.*missing/],
+    ['null tool entry', () => writeVertical({ config: config((c) => { (c.tools as unknown[]).push(null); }) }), /"tools" must be an object/],
     ['seed table not in schema', () => writeVertical({ seed: { ghosts: [{ id: 1 }] } }), /seed\.json.*ghosts/],
   ];
   for (const [label, dir, pattern] of failing) {

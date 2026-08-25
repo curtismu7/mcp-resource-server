@@ -2,7 +2,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { writeVertical } from './fixtures';
+import { cleanupVerticals, writeVertical } from './fixtures';
 
 // The registry loads the vertical at import time, so env must be set first.
 const dir = writeVertical();
@@ -13,7 +13,7 @@ process.env.VERTICAL_DB_PATH = path.join(tmp, 'demo.db');
 
 import { ALL_TOOLS, PROMPTS, RESOURCE_CATALOG, RESOURCE_NAME_DEFAULT, SUPPORTED_SCOPES, dispatch, findTool } from '../../src/tools/registry';
 
-afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+afterAll(() => { fs.rmSync(tmp, { recursive: true, force: true }); cleanupVerticals(); });
 
 describe('registry over a config vertical', () => {
   it('exposes the catalog, scopes, resources and prompts from vertical.json', () => {

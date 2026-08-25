@@ -57,11 +57,19 @@ export const GOOD_CONFIG = {
   ],
 };
 
+const created: string[] = [];
+
+/** Remove every folder writeVertical created — call from afterAll. */
+export function cleanupVerticals(): void {
+  for (const d of created.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+}
+
 /** Write a vertical folder into a fresh temp dir and return its path. Pass overrides to break it. */
 export function writeVertical(overrides: {
   config?: unknown; schema?: string; seed?: unknown; omit?: Array<'vertical.json' | 'schema.sql' | 'seed.json'>;
 } = {}): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vertical-'));
+  created.push(dir);
   const omit = new Set(overrides.omit ?? []);
   if (!omit.has('vertical.json')) fs.writeFileSync(path.join(dir, 'vertical.json'), JSON.stringify(overrides.config ?? GOOD_CONFIG, null, 2));
   if (!omit.has('schema.sql')) fs.writeFileSync(path.join(dir, 'schema.sql'), overrides.schema ?? GOOD_SCHEMA);
