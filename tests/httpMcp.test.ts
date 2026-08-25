@@ -20,8 +20,7 @@ import type { AddressInfo } from 'net';
 import { __setFetchForTests } from '../src/transactionHop';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-http-'));
-process.env.AIRLINES_DB_PATH = path.join(tmpDir, 'airlines.db');
-process.env.AIRLINES_SEED_PATH = path.join(__dirname, '..', 'seed', 'airlines.seed.json');
+process.env.VERTICAL_DB_PATH = path.join(tmpDir, 'banking.db');
 process.env.MCP_RESOURCE_SERVER_RESOURCE_URI = 'mcp-resource-server.ping.demo';
 process.env.SKIP_TOKEN_SIGNATURE_VALIDATION = 'true';
 process.env.PORT = '0';
@@ -72,7 +71,7 @@ const callTool = (name: string, args: Record<string, unknown> = {}) =>
 
 describe('POST /mcp', () => {
   it('401s without a bearer with RFC 6750 §3.1 WWW-Authenticate', async () => {
-    const r = await post(callTool('get_airline_bookings'));
+    const r = await post(callTool('list_accounts'));
     expect(r.status).toBe(401);
     expect(r.wwwAuth).toMatch(/realm="/);
     expect(r.wwwAuth).toMatch(/error="invalid_token"/);
@@ -84,7 +83,7 @@ describe('POST /mcp', () => {
   // JSON-RPC body (the -32001 check alone doesn't prove that; an HTTP-level
   // consumer like demo_mcp_proxy only sees the status code).
   it('rejects a token minted for another audience', async () => {
-    const r = await post(callTool('get_airline_bookings'), token('airlines:read', 'someone-else.ping.demo'));
+    const r = await post(callTool('list_accounts'), token('banking:read', 'someone-else.ping.demo'));
     expect(r.status).toBe(401);
     expect(r.wwwAuth).toMatch(/error="invalid_token"/);
     expect(r.json.error.code).toBe(-32001);
@@ -95,21 +94,20 @@ describe('POST /mcp', () => {
   // per-tool scope check the WebSocket path enforces.
   // RFC 6750 §3.1: scope violations on HTTP MUST be 403, not 200.
   it('enforces the per-tool scope gate with HTTP 403', async () => {
-    const r = await post(callTool('get_airline_bookings'), token('invest:read'));
+    const r = await post(callTool('list_accounts'), token('invest:read'));
     expect(r.status).toBe(403);
     expect(r.wwwAuth).toMatch(/error="insufficient_scope"/);
-    expect(r.wwwAuth).toMatch(/scope="airlines:read"/);
+    expect(r.wwwAuth).toMatch(/scope="banking:read"/);
     expect(r.wwwAuth).toContain('resource_metadata=');
     expect(r.json.error.code).toBe(-32005);
-    expect(r.json.error.data.requiredScopes).toEqual(['airlines:read']);
+    expect(r.json.error.data.requiredScopes).toEqual(['banking:read']);
   });
 
-  it('returns airlines rows from SQLite for a properly scoped token', async () => {
-    const r = await post(callTool('get_airline_bookings'), token('airlines:read'));
+  it('returns banking rows from SQLite for a properly scoped token', async () => {
+    const r = await post(callTool('list_accounts'), token('banking:read'));
     expect(r.status).toBe(200);
-    const payload = JSON.parse(r.json.result.content[0].text);
-    expect(payload.source).toBe('sqlite');
-    expect(payload.bookings[0].confirmationNumber).toBe('K7XR2M');
+    const parsed = JSON.parse(r.json.result.content[0].text);
+    expect(parsed.items).toHaveLength(4);
   });
 
   it('emits a transaction-trace hop when the caller forwards a correlationId', async () => {
@@ -122,8 +120,8 @@ describe('POST /mcp', () => {
     });
     try {
       const r = await post(
-        { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'get_airline_bookings', arguments: {}, correlationId: 'c-http-1' } },
-        token('airlines:read'),
+        { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'list_accounts', arguments: {}, correlationId: 'c-http-1' } },
+        token('banking:read'),
       );
       expect(r.status).toBe(200);
       await new Promise((resolve) => setImmediate(resolve));
@@ -132,7 +130,7 @@ describe('POST /mcp', () => {
         correlationId: 'c-http-1',
         service: 'mcp-resource-server',
         phase: 'mcp.tool',
-        op: 'get_airline_bookings',
+        op: 'list_accounts',
         status: 'ok',
       });
     } finally {
@@ -143,23 +141,23 @@ describe('POST /mcp', () => {
   });
 
   it('filters tools/list by scope, same as the WebSocket path', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, token('airlines:read'));
+    const r = await post({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, token('banking:read'));
     const names = r.json.result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['get_airline_bookings', 'get_flight_status', 'check_seat_availability', 'get_loyalty_status']);
+    expect(names).toEqual(['list_accounts', 'get_account', 'get_account_balance', 'list_transactions', 'search_transactions', 'list_cards', 'get_statement', 'find_branches']);
   });
 
   it('handles initialize without a token check, matching the WS handshake', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 3, method: 'initialize', params: {} }, token('airlines:read'));
+    const r = await post({ jsonrpc: '2.0', id: 3, method: 'initialize', params: {} }, token('banking:read'));
     expect(r.json.result.protocolVersion).toBe('2025-11-25');
   });
 
   it('202s a notification, which produces no JSON-RPC response', async () => {
-    const r = await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, token('airlines:read'));
+    const r = await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, token('banking:read'));
     expect(r.status).toBe(202);
   });
 
   it('returns a parse error for malformed JSON rather than crashing', async () => {
-    const r = await post('{not json', token('airlines:read'));
+    const r = await post('{not json', token('banking:read'));
     expect(r.json.error.code).toBe(-32700);
   });
 
@@ -170,7 +168,7 @@ describe('POST /mcp', () => {
   it('assigns an Mcp-Session-Id header on the initialize response', async () => {
     const res = await fetch(`${base}/mcp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token('airlines:read')}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token('banking:read')}` },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
     });
     expect(res.headers.get('mcp-session-id')).toBeTruthy();
@@ -179,8 +177,8 @@ describe('POST /mcp', () => {
   it('does not assign a session id on an ordinary tools/call response', async () => {
     const res = await fetch(`${base}/mcp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token('airlines:read')}` },
-      body: JSON.stringify(callTool('get_airline_bookings')),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token('banking:read')}` },
+      body: JSON.stringify(callTool('list_accounts')),
     });
     expect(res.headers.get('mcp-session-id')).toBeNull();
   });
@@ -191,68 +189,48 @@ describe('POST /mcp', () => {
 // chat UI has no prompt picker), built anyway per explicit request to close
 // every gap the spec-compliance audit found.
 describe('Prompts capability', () => {
-  it('lists summarize_airline_booking with its argument schema', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 1, method: 'prompts/list', params: {} }, token('airlines:read'));
-    const prompt = r.json.result.prompts.find((p: { name: string }) => p.name === 'summarize_airline_booking');
+  it('lists explain_account with its argument schema', async () => {
+    const r = await post({ jsonrpc: '2.0', id: 1, method: 'prompts/list', params: {} }, token('banking:read'));
+    const prompt = r.json.result.prompts.find((p: { name: string }) => p.name === 'explain_account');
     expect(prompt).toBeDefined();
     expect(prompt.arguments).toEqual([
-      { name: 'bookingId', description: expect.any(String), required: true },
+      { name: 'account_id', description: expect.any(String), required: true },
     ]);
   });
 
-  it('prompts/get fills the booking id into a real instruction referencing this server\'s own tools', async () => {
+  it('prompts/get fills the account id into a real instruction referencing this server\'s own tools', async () => {
     const r = await post(
-      { jsonrpc: '2.0', id: 2, method: 'prompts/get', params: { name: 'summarize_airline_booking', arguments: { bookingId: 'K7XR2M' } } },
-      token('airlines:read'),
+      { jsonrpc: '2.0', id: 2, method: 'prompts/get', params: { name: 'explain_account', arguments: { account_id: 'ACC-001' } } },
+      token('banking:read'),
     );
     expect(r.json.result.messages).toHaveLength(1);
     const text = r.json.result.messages[0].content.text;
-    expect(text).toContain('K7XR2M');
-    expect(text).toContain('get_airline_bookings');
-    expect(text).toContain('get_flight_status');
+    expect(text).toContain('ACC-001');
+    expect(text).toContain('get_account_balance');
   });
 
   it('prompts/get on an unknown prompt name is -32602, not a crash', async () => {
     const r = await post(
       { jsonrpc: '2.0', id: 3, method: 'prompts/get', params: { name: 'not_a_real_prompt', arguments: {} } },
-      token('airlines:read'),
+      token('banking:read'),
     );
     expect(r.json.error.code).toBe(-32602);
   });
 
   it('declares the prompts capability on initialize', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 4, method: 'initialize', params: {} }, token('airlines:read'));
+    const r = await post({ jsonrpc: '2.0', id: 4, method: 'initialize', params: {} }, token('banking:read'));
     expect(r.json.result.capabilities.prompts).toBeDefined();
   });
 });
 
-// MCP Completion capability — real argument autocompletion, scoped to the
-// authenticated caller's own bookings (not a global lookup). Depends on
-// Prompts existing (bookingId is summarize_airline_booking's argument).
-describe('Completion capability', () => {
-  it('completes bookingId from the caller\'s own confirmation numbers matching the given prefix', async () => {
+describe('completion/complete', () => {
+  it('returns an empty completion for any ref (nothing to suggest is not an error)', async () => {
     const r = await post({
       jsonrpc: '2.0', id: 1, method: 'completion/complete',
-      params: {
-        ref: { type: 'ref/prompt', name: 'summarize_airline_booking' },
-        argument: { name: 'bookingId', value: 'K7' },
-      },
-    }, token('airlines:read'));
-    expect(r.json.result.completion.values).toContain('K7XR2M');
-    for (const v of r.json.result.completion.values) expect(v.startsWith('K7')).toBe(true);
-  });
-
-  it('returns an empty completion (not an error) for an unrecognized ref/argument combo', async () => {
-    const r = await post({
-      jsonrpc: '2.0', id: 2, method: 'completion/complete',
-      params: { ref: { type: 'ref/prompt', name: 'not_a_real_prompt' }, argument: { name: 'x', value: '' } },
-    }, token('airlines:read'));
-    expect(r.json.result.completion.values).toEqual([]);
-  });
-
-  it('declares the completions capability on initialize', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 3, method: 'initialize', params: {} }, token('airlines:read'));
-    expect(r.json.result.capabilities.completions).toBeDefined();
+      params: { ref: { type: 'ref/prompt', name: 'explain_account' }, argument: { name: 'account_id', value: 'A' } },
+    }, token('banking:read'));
+    expect(r.status).toBe(200);
+    expect(r.json.result.completion).toEqual({ values: [], total: 0, hasMore: false });
   });
 });
 
@@ -263,7 +241,7 @@ describe('Completion capability', () => {
 // caching) lands would make this RPC lie to a caller relying on it.
 describe('server/discover', () => {
   it('answers with resultType complete, supportedVersions, capabilities, and serverInfo', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: {} }, token('airlines:read'));
+    const r = await post({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: {} }, token('banking:read'));
     expect(r.json.result.resultType).toBe('complete');
     expect(r.json.result.supportedVersions).toEqual(['2025-11-25']);
     expect(r.json.result.capabilities).toMatchObject({ tools: {} });
@@ -274,7 +252,7 @@ describe('server/discover', () => {
     const r = await post({
       jsonrpc: '2.0', id: 2, method: 'server/discover',
       params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } },
-    }, token('airlines:read'));
+    }, token('banking:read'));
     expect(r.json.result.resultType).toBe('complete');
   });
 });
@@ -289,7 +267,7 @@ describe('Modern per-request version negotiation (_meta)', () => {
     const r = await post({
       jsonrpc: '2.0', id: 9, method: 'tools/list',
       params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } },
-    }, token('airlines:read'));
+    }, token('banking:read'));
     // MCP spec 2026-07-28 Streamable HTTP §Protocol Version Header: this
     // case MUST be 400 Bad Request, not 200 with a JSON-RPC-level error.
     expect(r.status).toBe(400);
@@ -301,7 +279,7 @@ describe('Modern per-request version negotiation (_meta)', () => {
   });
 
   it('does not touch an ordinary Legacy request with no _meta.protocolVersion', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 10, method: 'tools/list', params: {} }, token('airlines:read'));
+    const r = await post({ jsonrpc: '2.0', id: 10, method: 'tools/list', params: {} }, token('banking:read'));
     expect(r.json.result.tools).toBeDefined();
   });
 });

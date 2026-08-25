@@ -1,0 +1,62 @@
+{
+  "name": "healthcare",
+  "resourceName": "Healthcare MCP Server",
+  "tools": [
+    {
+      "name": "view_records",
+      "description": "The patient's medical records, newest first.",
+      "inputSchema": { "type": "object", "properties": { "limit": { "type": "integer", "description": "Max rows (1-100, default 20)" } }, "required": [] },
+      "requiredScopes": ["healthcare:read"],
+      "intentHints": ["show my medical records", "view my records", "recent visits"],
+      "sql": "SELECT id, date, type, provider, summary FROM records ORDER BY date DESC, id DESC LIMIT COALESCE(:limit, 20)",
+      "result": "many"
+    },
+    {
+      "name": "get_record",
+      "description": "One medical record by id.",
+      "inputSchema": { "type": "object", "properties": { "record_id": { "type": "string", "description": "Record id, e.g. REC-101" } }, "required": ["record_id"] },
+      "requiredScopes": ["healthcare:read"],
+      "intentHints": ["show record", "details of my lab result"],
+      "sql": "SELECT r.id, r.date, r.type, r.provider, r.summary, p.full_name AS patient, p.mrn FROM records r JOIN patients p ON p.id = r.patient_id WHERE r.id = :record_id",
+      "result": "one"
+    },
+    {
+      "name": "list_appointments",
+      "description": "Upcoming and past appointments.",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "requiredScopes": ["healthcare:read"],
+      "intentHints": ["my appointments", "when is my next appointment"],
+      "sql": "SELECT id, datetime, provider, location, reason, status FROM appointments ORDER BY datetime",
+      "result": "many"
+    },
+    {
+      "name": "list_prescriptions",
+      "description": "Current and expired prescriptions with refills remaining.",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "requiredScopes": ["healthcare:read"],
+      "intentHints": ["my prescriptions", "do I have refills left", "medications"],
+      "sql": "SELECT id, medication, dosage, prescriber, refills_left, status FROM prescriptions ORDER BY status, medication",
+      "result": "many"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "healthcare://records",
+      "name": "Patient Records",
+      "description": "All medical records for the patient",
+      "mimeType": "application/json",
+      "requiredScope": "healthcare:read",
+      "uriTemplate": "healthcare://records/{record_id}",
+      "templateName": "Patient Record",
+      "listTool": "view_records"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "summarize_visit",
+      "description": "Summarize one medical record for the patient in plain language.",
+      "arguments": [{ "name": "record_id", "description": "Record id, e.g. REC-101", "required": true }],
+      "template": "Call get_record for {{record_id}} and explain what it says in plain, patient-friendly language. Do not show raw field names."
+    }
+  ]
+}

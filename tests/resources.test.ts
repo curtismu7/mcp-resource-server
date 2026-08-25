@@ -6,8 +6,7 @@ import path from 'path';
 import type { AddressInfo } from 'net';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-res-'));
-process.env.AIRLINES_DB_PATH = path.join(tmpDir, 'airlines.db');
-process.env.AIRLINES_SEED_PATH = path.join(__dirname, '..', 'seed', 'airlines.seed.json');
+process.env.VERTICAL_DB_PATH = path.join(tmpDir, 'banking.db');
 process.env.MCP_RESOURCE_SERVER_RESOURCE_URI = 'mcp-resource-server.ping.demo';
 process.env.SKIP_TOKEN_SIGNATURE_VALIDATION = 'true';
 process.env.PORT = '0';
@@ -56,13 +55,12 @@ describe('resources/list', () => {
   it('returns resources filtered by scope', async () => {
     const r = await post({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }, token('banking:read'));
     const uris = r.json.result.resources.map((res: any) => res.uri);
-    expect(uris).toContain('banking://accounts');
-    expect(uris).not.toContain('healthcare://records');
+    expect(uris).toEqual(['banking://accounts', 'banking://cards']);
   });
 
   it('returns all resources for wildcard scope', async () => {
     const r = await post({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }, token('*'));
-    expect(r.json.result.resources.length).toBeGreaterThanOrEqual(11);
+    expect(r.json.result.resources.length).toBe(2);
   });
 
   it('returns -32001 without a token', async () => {
@@ -73,9 +71,9 @@ describe('resources/list', () => {
 
 describe('resources/templates/list', () => {
   it('returns URI templates for scoped verticals', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 1, method: 'resources/templates/list', params: {} }, token('read'));
+    const r = await post({ jsonrpc: '2.0', id: 1, method: 'resources/templates/list', params: {} }, token('banking:read'));
     const templates = r.json.result.resourceTemplates.map((t: any) => t.uriTemplate);
-    expect(templates).toContain('healthcare://records/{recordId}');
+    expect(templates).toContain('banking://cards/{card_id}');
   });
 });
 
@@ -87,7 +85,8 @@ describe('resources/read', () => {
     }, token('banking:read'));
     expect(r.json.result.contents[0].mimeType).toBe('application/json');
     const data = JSON.parse(r.json.result.contents[0].text);
-    expect(Array.isArray(data.accounts)).toBe(true);
+    expect(data.count).toBe(4);
+    expect(Array.isArray(data.items)).toBe(true);
   });
 
   it('returns -32005 for wrong scope', async () => {
@@ -106,16 +105,14 @@ describe('resources/read', () => {
     expect(r.json.error.code).toBe(-32002);
   });
 
-  it('returns healthcare records content', async () => {
-    // view_records requires plain 'read' (scope-topology.json's real,
-    // already-granted scope for this tool name) — not the invented
-    // 'healthcare:read' the resource-server catalog entry used to declare.
+  it('returns banking cards content', async () => {
     const r = await post({
       jsonrpc: '2.0', id: 1, method: 'resources/read',
-      params: { uri: 'healthcare://records' },
-    }, token('read'));
+      params: { uri: 'banking://cards' },
+    }, token('banking:read'));
     const data = JSON.parse(r.json.result.contents[0].text);
-    expect(Array.isArray(data.records)).toBe(true);
+    expect(data).toEqual(expect.objectContaining({ count: 2 }));
+    expect(Array.isArray(data.items)).toBe(true);
   });
 });
 

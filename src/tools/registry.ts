@@ -1,88 +1,98 @@
 'use strict';
 
 /**
- * Tool registry for this resource server.
+ * The active vertical, loaded once at import from
+ *   $VERTICALS_DIR/$VERTICAL   (defaults: <package>/verticals, "banking")
+ * and its database at
+ *   $VERTICAL_DB_PATH           (default: <cwd>/data/<VERTICAL>.db)
  *
- * index.ts used to hardcode INVEST_TOOLS/dispatchTool in six places; adding a
- * second namespace made that untenable. Everything the transport needs — the
- * catalog, the advertised scopes, and the dispatch — comes from here.
+ * Everything the transport needs — the catalog, advertised scopes,
+ * resources, prompts, and dispatch — comes from here, so index.ts never
+ * knows which vertical it is serving. A bad config exits the process with
+ * the offending file and tool named.
  */
 
-import { McpToolDef } from './toolTypes';
-import { INVEST_TOOLS } from './investTools';
-import { AIRLINES_TOOLS } from './airlinesTools';
-import { BANKING_TOOLS } from './bankingTools';
-import { HEALTHCARE_TOOLS } from './healthcareTools';
-import { GOVERNMENT_TOOLS } from './governmentTools';
-import { MANUFACTURING_TOOLS } from './manufacturingTools';
-import { RETAIL_TOOLS } from './retailTools';
-import { SPORTING_GOODS_TOOLS } from './sportingGoodsTools';
-import { UNIVERSITY_TOOLS } from './universityTools';
-import { WORKFORCE_TOOLS } from './workforceTools';
-import { ANF_TOOLS } from './anfTools';
-import { dispatchTool as dispatchInvestTool } from './investToolHandler';
-import { AIRLINES_TOOL_NAMES, dispatchAirlinesTool } from './airlinesToolHandler';
-import { dispatchBankingTool } from './bankingToolHandler';
-import { dispatchHealthcareTool } from './healthcareToolHandler';
-import { dispatchGovernmentTool } from './governmentToolHandler';
-import { dispatchManufacturingTool } from './manufacturingToolHandler';
-import { dispatchRetailTool } from './retailToolHandler';
-import { dispatchSportingGoodsTool } from './sportingGoodsToolHandler';
-import { dispatchUniversityTool } from './universityToolHandler';
-import { dispatchWorkforceTool } from './workforceToolHandler';
-import { dispatchAnfTool } from './anfToolHandler';
+import path from 'path';
+import { loadVertical, VerticalConfigError } from '../vertical/load';
+import { runSelect, seedDatabase } from '../vertical/db';
+import { McpToolDef, PromptDef, ResourceDef, Vertical, VerticalTool } from '../vertical/types';
 
-export const ALL_TOOLS: McpToolDef[] = [
-  ...INVEST_TOOLS,
-  ...AIRLINES_TOOLS,
-  ...BANKING_TOOLS,
-  ...HEALTHCARE_TOOLS,
-  ...GOVERNMENT_TOOLS,
-  ...MANUFACTURING_TOOLS,
-  ...RETAIL_TOOLS,
-  ...SPORTING_GOODS_TOOLS,
-  ...UNIVERSITY_TOOLS,
-  ...WORKFORCE_TOOLS,
-  ...ANF_TOOLS,
-];
+const MAX_LIMIT = 100;
 
-/**
- * Scopes advertised in the RFC 9728 metadata — derived from the catalog so a
- * client that reads it always requests a scope that actually unlocks a tool.
- */
-export const SUPPORTED_SCOPES: string[] = [
-  ...new Set(ALL_TOOLS.flatMap((t) => t.requiredScopes)),
-];
+function loadActive(): Vertical {
+  const name = process.env.VERTICAL || 'banking';
+  const root = process.env.VERTICALS_DIR || path.join(__dirname, '..', '..', 'verticals');
+  try {
+    return loadVertical(path.join(root, name));
+  } catch (err) {
+    if (err instanceof VerticalConfigError) {
+      console.error(`[mcp-resource-server] FATAL: invalid vertical "${name}" — ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+export const VERTICAL: Vertical = loadActive();
+
+export function resolveDbPath(): string {
+  return process.env.VERTICAL_DB_PATH || path.join(process.cwd(), 'data', `${VERTICAL.name}.db`);
+}
+
+{
+  const { seededTables } = seedDatabase(resolveDbPath(), VERTICAL.schemaSql, VERTICAL.seed);
+  if (seededTables.length) console.log(`[mcp-resource-server] seeded ${resolveDbPath()}: ${seededTables.join(', ')}`);
+}
+
+const TOOLS_BY_NAME = new Map<string, VerticalTool>(VERTICAL.tools.map((t) => [t.name, t]));
+
+/** The catalog as advertised — the SQL never leaves this module. */
+export const ALL_TOOLS: McpToolDef[] = VERTICAL.tools.map(({ sql: _sql, result: _result, ...def }) => def);
+
+/** Derived from the catalog so RFC 9728 metadata only advertises scopes that unlock a tool. */
+export const SUPPORTED_SCOPES: string[] = [...new Set(ALL_TOOLS.flatMap((t) => t.requiredScopes))];
+
+export const RESOURCE_CATALOG: ResourceDef[] = VERTICAL.resources;
+export const PROMPTS: PromptDef[] = VERTICAL.prompts;
+export const RESOURCE_NAME_DEFAULT: string = VERTICAL.resourceName;
 
 export function findTool(toolName: string): McpToolDef | undefined {
   return ALL_TOOLS.find((t) => t.name === toolName);
 }
 
-const BANKING_TOOL_NAMES = new Set(BANKING_TOOLS.map((t) => t.name));
-const HEALTHCARE_TOOL_NAMES = new Set(HEALTHCARE_TOOLS.map((t) => t.name));
-const GOVERNMENT_TOOL_NAMES = new Set(GOVERNMENT_TOOLS.map((t) => t.name));
-const MANUFACTURING_TOOL_NAMES = new Set(MANUFACTURING_TOOLS.map((t) => t.name));
-const RETAIL_TOOL_NAMES = new Set(RETAIL_TOOLS.map((t) => t.name));
-const SPORTING_GOODS_TOOL_NAMES = new Set(SPORTING_GOODS_TOOLS.map((t) => t.name));
-const UNIVERSITY_TOOL_NAMES = new Set(UNIVERSITY_TOOLS.map((t) => t.name));
-const WORKFORCE_TOOL_NAMES = new Set(WORKFORCE_TOOLS.map((t) => t.name));
-const ANF_TOOL_NAMES = new Set(ANF_TOOLS.map((t) => t.name));
+// `limit` is the one argument with engine semantics: clamp to 1..MAX_LIMIT so a
+// malformed or oversized value can't distort the query; absent stays absent
+// (the SQL's COALESCE supplies the default).
+function clampLimit(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(Math.max(Math.trunc(n), 1), MAX_LIMIT);
+}
 
-export function dispatch(
+export async function dispatch(
   toolName: string,
   args: Record<string, unknown>,
-  token: string,
-  subject: string,
+  _token: string,
+  _subject: string,
 ): Promise<unknown> {
-  if (AIRLINES_TOOL_NAMES.has(toolName)) return dispatchAirlinesTool(toolName, args, subject);
-  if (BANKING_TOOL_NAMES.has(toolName)) return dispatchBankingTool(toolName, args, subject);
-  if (HEALTHCARE_TOOL_NAMES.has(toolName)) return dispatchHealthcareTool(toolName, args);
-  if (GOVERNMENT_TOOL_NAMES.has(toolName)) return dispatchGovernmentTool(toolName, args);
-  if (MANUFACTURING_TOOL_NAMES.has(toolName)) return dispatchManufacturingTool(toolName, args);
-  if (RETAIL_TOOL_NAMES.has(toolName)) return dispatchRetailTool(toolName, args);
-  if (SPORTING_GOODS_TOOL_NAMES.has(toolName)) return dispatchSportingGoodsTool(toolName, args);
-  if (UNIVERSITY_TOOL_NAMES.has(toolName)) return dispatchUniversityTool(toolName, args);
-  if (WORKFORCE_TOOL_NAMES.has(toolName)) return dispatchWorkforceTool(toolName, args);
-  if (ANF_TOOL_NAMES.has(toolName)) return dispatchAnfTool(toolName, args);
-  return dispatchInvestTool(toolName, args, token);
+  const tool = TOOLS_BY_NAME.get(toolName);
+  if (!tool) throw new Error(`Unknown tool: ${toolName}`);
+
+  const required = ((tool.inputSchema as { required?: string[] }).required ?? []);
+  for (const name of required) {
+    if (args[name] === undefined || args[name] === null || args[name] === '') {
+      throw new Error(`missing required argument: ${name}`);
+    }
+  }
+  const params: Record<string, unknown> = { ...args };
+  if ('limit' in params) params.limit = clampLimit(params.limit);
+
+  const rows = runSelect(resolveDbPath(), tool.sql, params);
+  if (tool.result === 'many') return { items: rows, count: rows.length };
+  if (rows.length === 0) {
+    const key = required[0];
+    throw new Error(key ? `not found: ${key}=${String(args[key])}` : 'not found');
+  }
+  return rows[0];
 }
