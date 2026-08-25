@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mcp-resource-server.fullname" . }}-env
+  labels:
+    {{- include "mcp-resource-server.labels" . | nindent 4 }}
+data:
+  VERTICAL: {{ .Values.vertical | quote }}
+  VERTICALS_DIR: /config/verticals
+  PORT: "8081"
+  HOST: 0.0.0.0
+  NODE_ENV: production
+  MCP_RESOURCE_SERVER_RESOURCE_URI: {{ include "mcp-resource-server.resourceUri" . | quote }}
+  STRICT_AUTH: {{ .Values.strictAuth | quote }}
+  {{- with .Values.pingone.environmentId }}
+  PINGONE_ENVIRONMENT_ID: {{ . | quote }}
+  PINGONE_REGION: {{ $.Values.pingone.region | default "com" | quote }}
+  {{- end }}
+  {{- with .Values.pingone.issuer }}
+  PINGONE_ISSUER: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.resourceName }}
+  MCP_SERVER_RESOURCE_NAME: {{ . | quote }}
+  {{- end }}

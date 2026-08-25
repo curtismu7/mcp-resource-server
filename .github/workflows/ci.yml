@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: azure/setup-helm@v4
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: helm lint helm/mcp-resource-server --set resourceUri=urn:ci

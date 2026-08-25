@@ -1,0 +1,105 @@
+# Default values for mcp-resource-server.
+
+image:
+  repository: ghcr.io/curtismu7/mcp-resource-server
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+# Needed only while the GHCR package is private:
+#   kubectl create secret docker-registry ghcr-pull --docker-server=ghcr.io \
+#     --docker-username=<user> --docker-password=<token>
+# imagePullSecrets: [{ name: ghcr-pull }]
+imagePullSecrets: []
+
+# Which vertical to serve: a folder baked into the image (banking, healthcare)
+# or one supplied below under `verticals`.
+vertical: banking
+
+# Verticals supplied from values, without rebuilding the image. Each becomes a
+# ConfigMap mounted at /config/verticals/<name>, next to the image's built-in
+# ones (an entry named like a built-in overrides it). All three files are
+# required.
+#
+# verticals:
+#   retail:
+#     vertical.json: |
+#       { "name": "retail", "resourceName": "Retail MCP Server", "tools": [ ... ] }
+#     schema.sql: |
+#       CREATE TABLE IF NOT EXISTS orders ( ... );
+#     seed.json: |
+#       { "orders": [ ... ] }
+verticals: {}
+
+pingone:
+  # Your PingOne environment id. Used for the RFC 9728 authorization_servers entry.
+  environmentId: ""
+  region: com
+  # Set to enable JWKS signature verification of every inbound token, e.g.
+  # https://auth.pingone.com/<env-id>/as . While unset, STRICT_AUTH decides
+  # whether unverifiable tokens are accepted (see strictAuth).
+  issuer: ""
+
+# The audience (aud) inbound bearer tokens must carry. Defaults to
+# https://<ingress.host> when ingress.enabled; otherwise required.
+resourceUri: ""
+# Overrides the vertical's resourceName in RFC 9728 metadata.
+resourceName: ""
+# With no JWKS source configured: false accepts well-formed tokens with a
+# warning (hand-made tokens work), true rejects every token.
+strictAuth: false
+
+# Extra environment variables for the container, in container spec form.
+extraEnv: []
+
+service:
+  type: ClusterIP
+  port: 8081
+
+ingress:
+  enabled: false
+  className: nginx-public
+  host: ""
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # MCP streamable HTTP holds responses open; buffering or a short read
+    # timeout truncates a session mid-stream.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  # Leave empty when the cluster's wildcard certificate covers the host.
+  # tls:
+  #   - secretName: mcp-resource-server-tls
+  #     hosts: [mcp.example.com]
+  tls: []
+
+# The SQLite database is seeded at startup, so an emptyDir is enough. Enable a
+# PVC only if out-of-band edits to the database must survive pod restarts.
+persistence:
+  enabled: false
+  size: 1Gi
+  storageClass: ""
+  existingClaim: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
