@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "vertical": { "type": "string", "minLength": 1 },
+    "verticals": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["vertical.json", "schema.sql", "seed.json"],
+        "properties": {
+          "vertical.json": { "type": "string" },
+          "schema.sql": { "type": "string" },
+          "seed.json": { "type": "string" }
+        }
+      }
+    },
+    "resourceUri": { "type": "string" },
+    "strictAuth": { "type": "boolean" },
+    "pingone": {
+      "type": "object",
+      "properties": {
+        "environmentId": { "type": "string" },
+        "region": { "type": "string" },
+        "issuer": { "type": "string" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "host": { "type": "string" },
+        "className": { "type": "string" }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "size": { "type": "string" },
+        "existingClaim": { "type": "string" }
+      }
+    }
+  }
+}

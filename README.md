@@ -80,6 +80,49 @@ duplicate name, a seed table the schema doesn't create.
 `npm test` runs every tool of every folder under `verticals/` against its
 own seed and fails on one that returns nothing.
 
+## Kubernetes (Helm)
+
+A chart lives in `helm/mcp-resource-server/`. The image is published by
+GitHub Actions to `ghcr.io/curtismu7/mcp-resource-server` on every push to
+`main` (`latest`, `sha-<short>`) and on `v*` tags.
+
+    helm install mcp helm/mcp-resource-server \
+      --set ingress.enabled=true --set ingress.host=mcp.example.com \
+      --set pingone.environmentId=<env-id> --set pingone.region=com
+
+`resourceUri` (the audience inbound tokens must carry) defaults to
+`https://<ingress.host>`; set it explicitly when you run without an ingress.
+Set `pingone.issuer` (`https://auth.pingone.<region>/<env-id>/as`) to verify
+token signatures; until then `strictAuth` decides whether unverifiable
+tokens are accepted (see "Auth modes"). No Secrets are needed: the server
+only verifies tokens. Ingress defaults are for an nginx controller
+(`className: nginx-public`, buffering off, long read timeout — MCP streams
+hold responses open).
+
+Switch vertical without a new image:
+
+    helm upgrade mcp helm/mcp-resource-server --reuse-values --set vertical=healthcare
+
+Add a vertical without a new image — the three files go in values and are
+mounted next to the built-in ones:
+
+    verticals:
+      retail:
+        vertical.json: |
+          { "name": "retail", "resourceName": "Retail MCP Server", "tools": [ ... ] }
+        schema.sql: |
+          CREATE TABLE IF NOT EXISTS orders ( ... );
+        seed.json: |
+          { "orders": [ ... ] }
+
+    helm upgrade mcp helm/mcp-resource-server --reuse-values -f retail-values.yaml --set vertical=retail
+
+The database is an `emptyDir` seeded at startup; set `persistence.enabled=true`
+for a PVC if edits made to the database must survive a restart. While the
+GHCR package is private, create a pull secret and set `imagePullSecrets`.
+`npm test` renders the chart with `helm template` and checks the manifests
+when helm is installed.
+
 ## Banking tools (default)
 
 | Tool | Arguments |

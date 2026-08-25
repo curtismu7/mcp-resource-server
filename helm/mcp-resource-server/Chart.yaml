@@ -1,0 +1,13 @@
+apiVersion: v2
+name: mcp-resource-server
+description: Config-driven MCP server (banking by default) over bundled SQLite, verifying PingOne bearer tokens. One vertical at a time, chosen by values.vertical; add verticals from values without rebuilding the image.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/curtismu7/mcp-resource-server
+sources:
+  - https://github.com/curtismu7/mcp-resource-server
+keywords:
+  - mcp
+  - pingone
+  - oauth

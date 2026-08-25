@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-resource-server.fullname" . }}
+  labels:
+    {{- include "mcp-resource-server.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mcp-resource-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mcp-resource-server.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll the pod when env or a custom vertical changes.
+        checksum/env: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/verticals: {{ include (print $.Template.BasePath "/verticals.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # The image's built-in verticals are copied next to any supplied from
+        # values, so VERTICALS_DIR holds both and a values entry can override a
+        # built-in of the same name.
+        - name: copy-builtin-verticals
+          image: {{ include "mcp-resource-server.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "cp -R /app/verticals/. /config/verticals/"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: verticals
+              mountPath: /config/verticals
+      containers:
+        - name: mcp-resource-server
+          image: {{ include "mcp-resource-server.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "mcp-resource-server.fullname" . }}-env
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: verticals
+              mountPath: /config/verticals
+            {{- range $name, $_ := .Values.verticals }}
+            - name: vertical-{{ $name }}
+              mountPath: /config/verticals/{{ $name }}
+              readOnly: true
+            {{- end }}
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: verticals
+          emptyDir: {}
+        {{- range $name, $_ := .Values.verticals }}
+        - name: vertical-{{ $name }}
+          configMap:
+            name: {{ include "mcp-resource-server.fullname" $ }}-vertical-{{ $name }}
+        {{- end }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "mcp-resource-server.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

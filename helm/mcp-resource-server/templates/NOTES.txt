@@ -1,0 +1,25 @@
+{{ include "mcp-resource-server.fullname" . }} is serving the "{{ .Values.vertical }}" vertical.
+
+Audience (aud) inbound tokens must carry: {{ include "mcp-resource-server.resourceUri" . }}
+{{- if .Values.ingress.enabled }}
+
+Endpoints:
+  https://{{ .Values.ingress.host }}/health
+  https://{{ .Values.ingress.host }}/.well-known/oauth-protected-resource
+  https://{{ .Values.ingress.host }}/mcp   (MCP streamable HTTP, POST)
+{{- else }}
+
+No ingress. Reach it with a port-forward:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mcp-resource-server.fullname" . }} 8081:{{ .Values.service.port }}
+  curl -s http://localhost:8081/health
+{{- end }}
+{{- if not .Values.pingone.issuer }}
+
+pingone.issuer is unset, so token signatures are NOT verified (STRICT_AUTH={{ .Values.strictAuth }}).
+A hand-made token works for testing:
+  node -e "const b64=s=>Buffer.from(JSON.stringify(s)).toString('base64url');console.log(b64({alg:'none',typ:'JWT'})+'.'+b64({sub:'test',scope:'{{ .Values.vertical }}:read',aud:'{{ include "mcp-resource-server.resourceUri" . }}',exp:Math.floor(Date.now()/1000)+3600})+'.')"
+Set pingone.issuer (https://auth.pingone.<region>/<env-id>/as) before exposing this to anyone else.
+{{- end }}
+
+Switch vertical:   helm upgrade {{ .Release.Name }} <chart> --reuse-values --set vertical=healthcare
+Add a vertical:    put vertical.json / schema.sql / seed.json under values.verticals.<name> and set vertical=<name>
