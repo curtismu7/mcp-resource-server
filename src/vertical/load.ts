@@ -22,6 +22,9 @@ export class VerticalConfigError extends Error {
   }
 }
 
+/** `{{arg}}` placeholders in a prompt template — shared with prompts/get in index.ts. */
+export const PLACEHOLDER_RE = /\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g;
+
 /** Names of the `:param` placeholders in a SQL string, in order, de-duplicated. */
 export function paramNames(sql: string): string[] {
   const names: string[] = [];
@@ -76,7 +79,8 @@ export function loadVertical(dir: string): Vertical {
   const tools: VerticalTool[] = [];
   const seen = new Set<string>();
   for (const t of cfg.tools) {
-    const label = `tool "${t?.name ?? '?'}"`;
+    if (!t || typeof t !== 'object') fail(cfgFile, 'every entry in "tools" must be an object');
+    const label = `tool "${t.name ?? '?'}"`;
     if (typeof t.name !== 'string' || !t.name) fail(cfgFile, 'every tool needs a "name"');
     if (seen.has(t.name)) fail(cfgFile, `duplicate tool name "${t.name}"`);
     seen.add(t.name);
@@ -111,7 +115,8 @@ export function loadVertical(dir: string): Vertical {
   const resources: ResourceDef[] = [];
   const seenUri = new Set<string>();
   for (const r of cfg.resources ?? []) {
-    const label = `resource "${r?.uri ?? '?'}"`;
+    if (!r || typeof r !== 'object') fail(cfgFile, 'every entry in "resources" must be an object');
+    const label = `resource "${r.uri ?? '?'}"`;
     for (const key of ['uri', 'name', 'description', 'mimeType', 'requiredScope', 'uriTemplate', 'templateName', 'listTool']) {
       if (typeof r[key] !== 'string' || !r[key]) fail(cfgFile, `${label}: "${key}" is required`);
     }
@@ -123,12 +128,13 @@ export function loadVertical(dir: string): Vertical {
 
   const prompts: PromptDef[] = [];
   for (const p of cfg.prompts ?? []) {
-    const label = `prompt "${p?.name ?? '?'}"`;
+    if (!p || typeof p !== 'object') fail(cfgFile, 'every entry in "prompts" must be an object');
+    const label = `prompt "${p.name ?? '?'}"`;
     if (typeof p.name !== 'string' || !p.name) fail(cfgFile, 'every prompt needs a "name"');
     if (typeof p.description !== 'string') fail(cfgFile, `${label}: "description" is required`);
     if (typeof p.template !== 'string') fail(cfgFile, `${label}: "template" is required`);
     const args: string[] = (p.arguments ?? []).map((a: any) => a.name);
-    for (const m of p.template.matchAll(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g)) {
+    for (const m of p.template.matchAll(PLACEHOLDER_RE)) {
       if (!args.includes(m[1])) fail(cfgFile, `${label}: template placeholder {{${m[1]}}} has no matching argument`);
     }
     prompts.push({ name: p.name, description: p.description, arguments: p.arguments ?? [], template: p.template });

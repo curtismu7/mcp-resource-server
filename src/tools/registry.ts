@@ -19,29 +19,37 @@ import { McpToolDef, PromptDef, ResourceDef, Vertical, VerticalTool } from '../v
 
 const MAX_LIMIT = 100;
 
+const ACTIVE_NAME = process.env.VERTICAL || 'banking';
+
+function fatal(what: string, err: unknown): never {
+  console.error(`[mcp-resource-server] FATAL: ${what} "${ACTIVE_NAME}" — ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+
 function loadActive(): Vertical {
-  const name = process.env.VERTICAL || 'banking';
   const root = process.env.VERTICALS_DIR || path.join(__dirname, '..', '..', 'verticals');
   try {
-    return loadVertical(path.join(root, name));
+    return loadVertical(path.join(root, ACTIVE_NAME));
   } catch (err) {
-    if (err instanceof VerticalConfigError) {
-      console.error(`[mcp-resource-server] FATAL: invalid vertical "${name}" — ${err.message}`);
-      process.exit(1);
-    }
+    if (err instanceof VerticalConfigError) return fatal('invalid vertical', err);
     throw err;
   }
 }
 
 export const VERTICAL: Vertical = loadActive();
 
-export function resolveDbPath(): string {
-  return process.env.VERTICAL_DB_PATH || path.join(process.cwd(), 'data', `${VERTICAL.name}.db`);
+/** Follows the active vertical: "<name>-mcp-resource-server" (banking-mcp-resource-server by default). */
+export const SERVICE_NAME = `${ACTIVE_NAME}-mcp-resource-server`;
+
+function resolveDbPath(): string {
+  return process.env.VERTICAL_DB_PATH || path.join(process.cwd(), 'data', `${ACTIVE_NAME}.db`);
 }
 
-{
+try {
   const { seededTables } = seedDatabase(resolveDbPath(), VERTICAL.schemaSql, VERTICAL.seed);
   if (seededTables.length) console.log(`[mcp-resource-server] seeded ${resolveDbPath()}: ${seededTables.join(', ')}`);
+} catch (err) {
+  fatal('seeding vertical', err);
 }
 
 const TOOLS_BY_NAME = new Map<string, VerticalTool>(VERTICAL.tools.map((t) => [t.name, t]));
@@ -91,8 +99,8 @@ export async function dispatch(
   const rows = runSelect(resolveDbPath(), tool.sql, params);
   if (tool.result === 'many') return { items: rows, count: rows.length };
   if (rows.length === 0) {
-    const key = required[0];
-    throw new Error(key ? `not found: ${key}=${String(args[key])}` : 'not found');
+    const what = required.map((k) => `${k}=${String(args[k])}`).join(', ');
+    throw new Error(what ? `not found: ${what}` : 'not found');
   }
   return rows[0];
 }

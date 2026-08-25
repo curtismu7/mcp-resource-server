@@ -32,7 +32,8 @@ export function seedDatabase(
       for (const [table, rows] of Object.entries(seed)) {
         const { n } = conn.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number };
         if (n > 0 || rows.length === 0) continue;
-        const cols = Object.keys(rows[0]);
+        // Union of keys across all rows, so a later row with an extra column is not silently dropped.
+        const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
         const stmt = conn.prepare(
           `INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
         );

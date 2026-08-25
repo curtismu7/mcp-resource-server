@@ -63,3 +63,9 @@ it('healthcare data comes back', async () => {
   const r = await post({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_record', arguments: { record_id: 'REC-103' } } }, token('healthcare:read'));
   expect(JSON.parse(r.result.content[0].text).type).toBe('imaging');
 });
+
+it('service name follows the active vertical', async () => {
+  const health: any = await (await fetch(`${base}/health`)).json();
+  expect(health.service).toBe('healthcare-mcp-resource-server');
+  expect(health.vertical).toBe('healthcare');
+});

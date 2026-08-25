@@ -36,8 +36,9 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 import { filterByScopes } from './vertical/types';
+import { PLACEHOLDER_RE } from './vertical/load';
 import {
-  ALL_TOOLS, PROMPTS, RESOURCE_CATALOG, RESOURCE_NAME_DEFAULT, SUPPORTED_SCOPES, VERTICAL, dispatch, findTool,
+  ALL_TOOLS, PROMPTS, RESOURCE_CATALOG, RESOURCE_NAME_DEFAULT, SERVICE_NAME, SUPPORTED_SCOPES, VERTICAL, dispatch, findTool,
 } from './tools/registry';
 import { decodeAndValidate, extractScopes, TokenError } from './server/tokenValidator';
 import { isValidLogLevel, emitLogMessage, LoggingState } from './mcpLogging';
@@ -145,7 +146,7 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'ok',
-      service: 'banking-mcp-resource-server',
+      service: SERVICE_NAME,
       uptime: process.uptime(),
       resourceUri: RESOURCE_URI,
       vertical: VERTICAL.name,
@@ -166,7 +167,7 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
     if (!token) {
       res.writeHead(401, {
         'Content-Type': 'application/json',
-        'WWW-Authenticate': `Bearer realm="banking-mcp-resource-server", error="invalid_token", error_description="Bearer token required", resource_metadata="${resourceMetadataUrl(req)}"`,
+        'WWW-Authenticate': `Bearer realm="${SERVICE_NAME}", error="invalid_token", error_description="Bearer token required", resource_metadata="${resourceMetadataUrl(req)}"`,
       });
       res.end(JSON.stringify({ error: 'invalid_token', error_description: 'Bearer token required' }));
       return;
@@ -231,7 +232,7 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
         if (isInsufficientScope) {
           res.writeHead(403, {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': `Bearer realm="banking-mcp-resource-server", error="insufficient_scope"${scopeHint}, resource_metadata="${resourceMetadataUrl(req)}"`,
+            'WWW-Authenticate': `Bearer realm="${SERVICE_NAME}", error="insufficient_scope"${scopeHint}, resource_metadata="${resourceMetadataUrl(req)}"`,
             ...sessionHeader,
           });
         } else if (isUnsupportedProtocolVersion) {
@@ -239,7 +240,7 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
         } else if (isInvalidToken) {
           res.writeHead(401, {
             'Content-Type': 'application/json',
-            'WWW-Authenticate': `Bearer realm="banking-mcp-resource-server", error="invalid_token", resource_metadata="${resourceMetadataUrl(req)}"`,
+            'WWW-Authenticate': `Bearer realm="${SERVICE_NAME}", error="invalid_token", resource_metadata="${resourceMetadataUrl(req)}"`,
             ...sessionHeader,
           });
         } else {
@@ -309,7 +310,7 @@ async function handleMessage(
         prompts: { listChanged: false },
         completions: {},
       },
-      serverInfo: { name: 'banking-mcp-resource-server', version: '1.0.0' },
+      serverInfo: { name: SERVICE_NAME, version: '1.0.0' },
     }));
     return;
   }
@@ -341,7 +342,7 @@ async function handleMessage(
         prompts: { listChanged: false },
         completions: {},
       },
-      { name: 'banking-mcp-resource-server', version: '1.0.0' },
+      { name: SERVICE_NAME, version: '1.0.0' },
     )));
     return;
   }
@@ -361,7 +362,7 @@ async function handleMessage(
       send(rpcError(id, -32602, `Unknown prompt: ${name}`));
       return;
     }
-    const text = prompt.template.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (_m, arg: string) => {
+    const text = prompt.template.replace(PLACEHOLDER_RE, (_m, arg: string) => {
       const v = promptArgs[arg];
       return typeof v === 'string' && v ? v : `(unspecified ${arg})`;
     });
