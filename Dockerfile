@@ -23,11 +23,10 @@ COPY package*.json ./
 RUN npm install --legacy-peer-deps --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
-COPY openapi/ ./openapi/
-# Seeds for the per-vertical SQLite databases. Applied only when the tables are empty
-# (src/db/*Db.ts), so a restart never clobbers out-of-band edits to
-# /app/data/*.db.
-COPY seed/ ./seed/
+# Vertical definitions (tools, schema, seed). The active one is chosen by
+# VERTICAL at runtime; its seed is applied at startup only when the tables in
+# /app/data/<VERTICAL>.db are empty, so a restart never clobbers edits.
+COPY verticals/ ./verticals/
 
 EXPOSE 8081
 

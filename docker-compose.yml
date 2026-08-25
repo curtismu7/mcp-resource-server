@@ -13,8 +13,9 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      VERTICAL: ${VERTICAL:-banking}
     volumes:
-      # SQLite databases live here, seeded on first boot from the image's
-      # seed/ dir. Bind mount so data survives a container recreate.
+      # SQLite database for the active vertical, seeded at startup from the
+      # image's verticals/ dir. Bind mount so data survives a container recreate.
       - ./data:/app/data
     restart: unless-stopped
