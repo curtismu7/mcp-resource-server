@@ -10,8 +10,7 @@
  * stack: mcp-invest.ping.demo, the PingOne "Demo MCP Invest" resource).
  *
  * Every vertical is served from this server's own SQLite database (src/db/).
- * The invest tools proxy to the BFF instead when BANKING_API_BASE_URL /
- * DEMO_API_BASE_URL is set (src/tools/investToolHandler.ts).
+ * Which vertical is served is chosen by VERTICAL (src/tools/registry.ts).
  *
  * HTTP surfaces (same port):
  *   GET  /.well-known/oauth-protected-resource  — RFC 9728 metadata
@@ -92,10 +91,9 @@ if (!RESOURCE_URI_ENV_VALUE.value) {
 const PINGONE_ENV_ID = process.env.PINGONE_ENVIRONMENT_ID || '';
 const PINGONE_REGION = process.env.PINGONE_REGION || 'com';
 
-// SUPPORTED_SCOPES is derived from the tool catalog (tools/registry.ts), so a
-// client reading this RFC 9728 metadata always requests a scope that actually
-// unlocks tools — 'invest:read' for the invest namespace, 'airlines:read' for
-// the SQLite-backed airlines namespace.
+// SUPPORTED_SCOPES is derived from the active vertical's tool catalog
+// (tools/registry.ts), so a client reading this RFC 9728 metadata only ever
+// sees a scope that actually unlocks a tool.
 
 /** Cap on a single HTTP MCP request body — a tool call is a few hundred bytes. */
 const MAX_MCP_BODY_BYTES = 256 * 1024;
