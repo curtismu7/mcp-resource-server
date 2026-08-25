@@ -25,7 +25,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import crypto from 'crypto';
 import {
   LEGACY_RESOURCE_URI_ENV,
   RESOURCE_URI_ENV,
@@ -33,83 +32,23 @@ import {
   resolveResourceUriEnv,
 } from './server/acceptedAudiences';
 
-interface ResourceDef {
-  uri: string;
-  name: string;
-  description: string;
-  mimeType: string;
-  requiredScope: string;
-  uriTemplate: string;
-  templateName: string;
-  listTool: string;
-}
-
-const RESOURCE_CATALOG: ResourceDef[] = [
-  { uri: 'banking://accounts', name: 'Bank Accounts', description: 'All bank accounts for the authenticated user', mimeType: 'application/json', requiredScope: 'banking:read', uriTemplate: 'banking://accounts/{accountId}', templateName: 'Bank Account', listTool: 'list_banking_accounts' },
-  { uri: 'healthcare://records', name: 'Patient Records', description: 'All patient records for the authenticated user', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'healthcare://records/{recordId}', templateName: 'Patient Record', listTool: 'view_records' },
-  { uri: 'government://permits', name: 'Government Permits', description: 'All government permits for the authenticated user', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'government://permits/{permitId}', templateName: 'Government Permit', listTool: 'view_permits' },
-  { uri: 'manufacturing://work-orders', name: 'Work Orders', description: 'All work orders for the authenticated user', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'manufacturing://work-orders/{orderId}', templateName: 'Work Order', listTool: 'view_work_orders' },
-  { uri: 'retail://orders', name: 'Retail Orders', description: 'All retail orders for the authenticated user', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'retail://orders/{orderId}', templateName: 'Retail Order', listTool: 'list_orders' },
-  { uri: 'sporting-goods://gear-orders', name: 'Gear Orders', description: 'All sporting-goods orders for the authenticated user', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'sporting-goods://gear-orders/{orderId}', templateName: 'Gear Order', listTool: 'list_gear' },
-  { uri: 'university://courses', name: 'Courses', description: 'All courses for the authenticated student', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'university://courses/{courseId}', templateName: 'Course', listTool: 'view_courses' },
-  { uri: 'workforce://expenses', name: 'Expenses', description: 'All expense reports for the authenticated employee', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'workforce://expenses/{expenseId}', templateName: 'Expense', listTool: 'list_expenses' },
-  { uri: 'anf://orders', name: 'ANF Orders', description: 'All Abercrombie & Fitch orders for the authenticated user', mimeType: 'application/json', requiredScope: 'read', uriTemplate: 'anf://orders/{orderId}', templateName: 'ANF Order', listTool: 'list_anf_orders' },
-  { uri: 'investment://accounts', name: 'Investment Accounts', description: 'All investment accounts for the authenticated user', mimeType: 'application/json', requiredScope: 'invest:read', uriTemplate: 'investment://accounts/{accountId}', templateName: 'Investment Account', listTool: 'get_investment_accounts' },
-  { uri: 'airlines://bookings', name: 'Airline Bookings', description: 'All airline bookings for the authenticated passenger', mimeType: 'application/json', requiredScope: 'airlines:read', uriTemplate: 'airlines://bookings/{bookingId}', templateName: 'Airline Booking', listTool: 'get_airline_bookings' },
-];
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
-import { filterByScopes } from './tools/toolTypes';
-import { ALL_TOOLS, SUPPORTED_SCOPES, dispatch, findTool } from './tools/registry';
+import { filterByScopes } from './vertical/types';
+import {
+  ALL_TOOLS, PROMPTS, RESOURCE_CATALOG, RESOURCE_NAME_DEFAULT, SUPPORTED_SCOPES, VERTICAL, dispatch, findTool,
+} from './tools/registry';
 import { decodeAndValidate, extractScopes, TokenError } from './server/tokenValidator';
 import { isValidLogLevel, emitLogMessage, LoggingState } from './mcpLogging';
 import { buildDiscoverResult, SUPPORTED_PROTOCOL_VERSIONS } from './serverDiscover';
 import { extractRequestedProtocolVersion, buildUnsupportedProtocolVersionError } from './modernNegotiation';
-import { resolvePassenger, listBookings } from './db/airlinesDb';
-import { getHoldings, resolveInvestor } from './db/investDb';
 import { emitHop } from './transactionHop';
 
+// MCP Prompts capability — templates come from the active vertical's
+// vertical.json (prompts[]); {{arg}} placeholders are filled from
+// prompts/get arguments.
 // ---------------------------------------------------------------------------
-// MCP Prompts capability — real, usable templates referencing this server's
-// own tools. No live consumer in the banking demo (the chat UI has no
-// prompt picker) — built for a client that connects to this server directly,
-// same as any other MCP host would.
-// ---------------------------------------------------------------------------
-
-interface PromptArgDef {
-  name: string;
-  description: string;
-  required?: boolean;
-}
-
-interface PromptDef {
-  name: string;
-  description: string;
-  argsDef: PromptArgDef[];
-  build: (args: Record<string, unknown>) => { description: string; messages: Array<{ role: string; content: { type: 'text'; text: string } }> };
-}
-
-const PROMPTS: PromptDef[] = [
-  {
-    name: 'summarize_airline_booking',
-    description: 'Summarize an airline booking and current flight status in plain language for the customer.',
-    argsDef: [{ name: 'bookingId', description: 'The booking confirmation number', required: true }],
-    build: (args) => {
-      const bookingId = typeof args.bookingId === 'string' && args.bookingId ? args.bookingId : '(unspecified booking)';
-      return {
-        description: 'Summarize an airline booking and current flight status in plain language for the customer.',
-        messages: [{
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Look up airline booking ${bookingId} using get_airline_bookings, then check its flight with get_flight_status. Summarize the itinerary and current flight status in plain, customer-friendly language — no raw field names.`,
-          },
-        }],
-      };
-    },
-  },
-];
 
 // Security guard: SKIP_TOKEN_SIGNATURE_VALIDATION downgrades JWT signature
 // verification to a warning (tokenValidator.ts) and must never run in production.
@@ -138,7 +77,8 @@ if (RESOURCE_URI_ENV_VALUE.source === LEGACY_RESOURCE_URI_ENV) {
   );
 }
 const ACCEPTED_AUDIENCES = RESOURCE_URI_LIST.join(',');
-const RESOURCE_NAME = process.env.MCP_SERVER_RESOURCE_NAME || 'Super Banking MCP Server (mcp-resource-server)';
+const RESOURCE_NAME = process.env.MCP_SERVER_RESOURCE_NAME || RESOURCE_NAME_DEFAULT;
+console.log(`[mcp-resource-server] vertical "${VERTICAL.name}" — ${ALL_TOOLS.length} tools, ${RESOURCE_CATALOG.length} resources, ${PROMPTS.length} prompts`);
 
 // Startup env validation
 if (!RESOURCE_URI_ENV_VALUE.value) {
@@ -151,24 +91,6 @@ if (!RESOURCE_URI_ENV_VALUE.value) {
 
 const PINGONE_ENV_ID = process.env.PINGONE_ENVIRONMENT_ID || '';
 const PINGONE_REGION = process.env.PINGONE_REGION || 'com';
-
-// ---------------------------------------------------------------------------
-// API-key auth (backend-app pattern) — gateway fetches key from vault and sends
-// it in X-API-Key. This coexists with the Bearer/WebSocket path above.
-// ---------------------------------------------------------------------------
-const API_KEY_ENV = (process.env.MCP_RESOURCE_SERVER_API_KEY || '').trim();
-let API_KEY: string;
-if (API_KEY_ENV) {
-  API_KEY = API_KEY_ENV;
-} else {
-  API_KEY = crypto.randomBytes(24).toString('hex');
-  console.warn('[mcp-resource-server] MCP_RESOURCE_SERVER_API_KEY unset — ephemeral key generated. Set it so the gateway can call the /invest HTTP endpoint.');
-}
-const API_KEY_DIGEST = crypto.createHash('sha256').update(API_KEY, 'utf8').digest();
-function apiKeyMatches(presented: string): boolean {
-  const d = crypto.createHash('sha256').update(presented, 'utf8').digest();
-  return crypto.timingSafeEqual(d, API_KEY_DIGEST);
-}
 
 // SUPPORTED_SCOPES is derived from the tool catalog (tools/registry.ts), so a
 // client reading this RFC 9728 metadata always requests a scope that actually
@@ -227,7 +149,8 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
       service: 'banking-mcp-resource-server',
       uptime: process.uptime(),
       resourceUri: RESOURCE_URI,
-      authMethods: ['bearer_token', 'api_key'],
+      vertical: VERTICAL.name,
+      authMethods: ['bearer_token'],
     }));
     return;
   }
@@ -342,46 +265,6 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
-  // HTTP + API-key path: backend-app pattern (gateway drops bearer, sends X-API-Key)
-  if (url === '/invest' && req.method === 'GET') {
-    const presented = req.headers['x-api-key'] as string | undefined;
-    if (!presented) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'api_key_missing', message: 'X-API-Key header required' }));
-      return;
-    }
-    if (!apiKeyMatches(presented)) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'api_key_invalid' }));
-      return;
-    }
-
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'X-Auth-Mechanism': 'api_key',
-    });
-    // Same portfolio the MCP invest tools serve (data/invest.db), so an
-    // out-of-band edit to the DB shows up on both paths.
-    const investor = resolveInvestor();
-    res.end(JSON.stringify({
-      invest: investor && {
-        portfolioId: investor.portfolio_id,
-        holder: investor.holder,
-        totalValue: investor.total_value,
-        cashSweep: investor.cash_sweep,
-        ytdReturnPct: investor.ytd_return_pct,
-        riskProfile: investor.risk_profile,
-        holdings: getHoldings(investor.investor_id).map((h) => ({
-          symbol: h.symbol, name: h.name, quantity: h.quantity, marketValue: h.market_value,
-        })),
-      },
-      source: 'banking_mcp_resource_server',
-      authMechanism: 'X-API-Key (shared secret)',
-      note: 'This portfolio was returned because the gateway presented a valid service API key. No OAuth bearer was involved on this hop — the gateway dropped the user token and attached a shared secret from its vault.',
-    }, null, 2));
-    return;
-  }
-
   res.writeHead(404);
   res.end();
 }
@@ -465,7 +348,9 @@ async function handleMessage(
   }
 
   if (method === 'prompts/list') {
-    send(rpcResult(id, { prompts: PROMPTS.map(({ name, description, argsDef }) => ({ name, description, arguments: argsDef })) }));
+    send(rpcResult(id, {
+      prompts: PROMPTS.map(({ name, description, arguments: args }) => ({ name, description, arguments: args })),
+    }));
     return;
   }
 
@@ -477,34 +362,22 @@ async function handleMessage(
       send(rpcError(id, -32602, `Unknown prompt: ${name}`));
       return;
     }
-    send(rpcResult(id, prompt.build(promptArgs)));
+    const text = prompt.template.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, (_m, arg: string) => {
+      const v = promptArgs[arg];
+      return typeof v === 'string' && v ? v : `(unspecified ${arg})`;
+    });
+    send(rpcResult(id, {
+      description: prompt.description,
+      messages: [{ role: 'user', content: { type: 'text', text } }],
+    }));
     return;
   }
 
-  // MCP Completion capability — real autocompletion, scoped to the
-  // authenticated caller's own bookings (never a global lookup across
-  // passengers). Only bookingId on summarize_airline_booking is wired;
-  // anything else gets an empty completion, not an error — the spec treats
-  // an unrecognized ref/argument as "nothing to suggest," not a failure.
+  // MCP Completion capability: this server has no argument autocompletion
+  // sources, so every request gets an empty list — the spec treats "nothing
+  // to suggest" as a normal result, not an error.
   if (method === 'completion/complete') {
-    const ref = msg.params?.ref;
-    const argument = msg.params?.argument;
-    let values: string[] = [];
-    if (ref?.type === 'ref/prompt' && ref?.name === 'summarize_airline_booking' && argument?.name === 'bookingId') {
-      let decoded;
-      try { decoded = await decodeAndValidate(token, ACCEPTED_AUDIENCES); } catch { decoded = undefined; }
-      if (decoded) {
-        const match = resolvePassenger(decoded.sub);
-        const prefix = String(argument.value ?? '').toUpperCase();
-        if (match) {
-          values = listBookings(match.passenger.passenger_ref)
-            .map((b) => b.confirmation_number)
-            .filter((cn) => cn.toUpperCase().startsWith(prefix))
-            .slice(0, 100);
-        }
-      }
-    }
-    send(rpcResult(id, { completion: { values, total: values.length, hasMore: false } }));
+    send(rpcResult(id, { completion: { values: [], total: 0, hasMore: false } }));
     return;
   }
 
