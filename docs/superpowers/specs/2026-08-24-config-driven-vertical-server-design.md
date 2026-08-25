@@ -85,8 +85,10 @@ Tool fields are today's `McpToolDef` (`name`, `description`, `inputSchema`,
   row); `"many"` returns `{ "items": rows, "count": n }`.
 
 Resource entries use the same shape as the current hand-maintained
-`RESOURCE_CATALOG` in `src/index.ts`; `resources/read` on a template URI
-calls `listTool` and filters the result by the template variable, as today.
+`RESOURCE_CATALOG` in `src/index.ts`. `resources/read` serves the exact
+`uri` (via `listTool`); `uriTemplate` entries are advertised by
+`resources/templates/list` but are not readable — the same as the server
+before this change.
 
 `limit`: a tool that accepts `limit` declares it in `inputSchema` and uses
 `LIMIT COALESCE(:limit, 20)`; the engine clamps a supplied value to 1–100
@@ -226,3 +228,4 @@ written as folders later using the healthcare one as the template).
 ## Amendments
 
 - 2026-08-24 (plan): `prompts[]` is part of `vertical.json` — `{ name, description, arguments[], template }`, where `template` is the user message and `{{arg}}` placeholders are filled from `prompts/get` arguments. `completion/complete` always returns an empty list. This replaces the airlines-specific prompt and completion hook that were in `src/index.ts`.
+- 2026-08-24 (final review): `resources/read` serves exact resource URIs only; template URIs are advertised, not readable (matches the pre-existing server behaviour).

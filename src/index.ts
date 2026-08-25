@@ -10,7 +10,7 @@
  * whose first entry is this server's canonical resource URI (in the AI-DEMO2
  * stack: mcp-invest.ping.demo, the PingOne "Demo MCP Invest" resource).
  *
- * Every vertical is served from this server's own SQLite database (src/db/).
+ * Every vertical is served from this server's own SQLite database (src/vertical/db.ts).
  * Which vertical is served is chosen by VERTICAL (src/tools/registry.ts).
  *
  * HTTP surfaces (same port):

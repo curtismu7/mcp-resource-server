@@ -32,6 +32,7 @@ describe('loadVertical', () => {
     ['required arg not in sql', () => writeVertical({ config: config((c) => { c.tools[1].sql = 'SELECT * FROM things'; }) }), /get_thing.*thing_id/],
     ['sql that does not prepare', () => writeVertical({ config: config((c) => { c.tools[0].sql = 'SELECT nope FROM missing_table'; }) }), /list_things.*missing_table/],
     ['sql that is not a SELECT', () => writeVertical({ config: config((c) => { c.tools[0].sql = 'DELETE FROM things'; }) }), /list_things.*SELECT/],
+    ['sql with a colon inside a string literal', () => writeVertical({ config: config((c) => { c.tools[0].sql = "SELECT id FROM things WHERE label = 'a:b'"; }) }), /list_things/],
     ['prompt placeholder with no argument', () => writeVertical({ config: config((c) => { c.prompts[0].template = 'Use {{missing}}'; }) }), /describe_thing.*missing/],
     ['seed table not in schema', () => writeVertical({ seed: { ghosts: [{ id: 1 }] } }), /seed\.json.*ghosts/],
   ];

@@ -91,7 +91,8 @@ export function loadVertical(dir: string): Vertical {
       if (!params.includes(req)) fail(cfgFile, `${label}: required argument "${req}" is not a :${req} parameter in "sql"`);
     }
     try {
-      probe.prepare(t.sql);
+      const stmt = probe.prepare(t.sql);
+      stmt.all(Object.fromEntries(params.map((n) => [n, null])));
     } catch (err) {
       fail(cfgFile, `${label}: "sql" does not prepare against schema.sql (${(err as Error).message})`);
     }
