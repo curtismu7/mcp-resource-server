@@ -3,7 +3,8 @@
 /**
  * banking-mcp-resource-server — entry point
  *
- * MCP server for ten mock verticals plus investment tools. Runs over WebSocket
+ * Config-driven MCP server: one active vertical, chosen by VERTICAL (banking
+ * by default), backed by a folder under verticals/. Runs over WebSocket
  * (same protocol as banking_mcp_server) and HTTP. Validates inbound token aud
  * against MCP_RESOURCE_SERVER_RESOURCE_URI — a comma-separated ACCEPTED list
  * whose first entry is this server's canonical resource URI (in the AI-DEMO2

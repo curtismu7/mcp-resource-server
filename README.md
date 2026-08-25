@@ -151,7 +151,7 @@ curl -s -X POST "https://auth.pingone.<region>/<env-id>/as/token" \
   -d "grant_type=client_credentials" \
   -d "client_id=<your PingOne worker app client id>" \
   -d "client_secret=<your PingOne worker app client secret>" \
-  -d "scope=<space-separated scopes, e.g. banking:read airlines:read>" \
+  -d "scope=<space-separated scopes, e.g. banking:read>" \
   -d "resource=<MCP_RESOURCE_SERVER_RESOURCE_URI value>"
 ```
 
